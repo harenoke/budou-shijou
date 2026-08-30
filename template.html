@@ -1,0 +1,661 @@
+<title>ブドウ相場ボード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@600;700&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --plane:#faf9fb; --surface:#ffffff; --sunk:#f4f1f7;
+  --ink:#17131c; --ink2:#57505f; --muted:#8b8394;
+  --grid:#ece8f0; --axis:#d7d1dd; --border:rgba(23,19,28,.11);
+  --accent:#6d3f7d; --accent-soft:#f0e7f3;
+  --up:#c0392b; --down:#0f7a55;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  --shadow:0 1px 2px rgba(23,19,28,.05), 0 8px 24px -16px rgba(23,19,28,.28);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --plane:#100d14; --surface:#17141b; --sunk:#1e1a24;
+    --ink:#f7f4f9; --ink2:#b9b1c2; --muted:#8b8394;
+    --grid:#262130; --axis:#35303c; --border:rgba(255,255,255,.11);
+    --accent:#c49ad3; --accent-soft:#241a2b;
+    --up:#e66767; --down:#2fae7e;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --plane:#100d14; --surface:#17141b; --sunk:#1e1a24;
+  --ink:#f7f4f9; --ink2:#b9b1c2; --muted:#8b8394;
+  --grid:#262130; --axis:#35303c; --border:rgba(255,255,255,.11);
+  --accent:#c49ad3; --accent-soft:#241a2b;
+  --up:#e66767; --down:#2fae7e;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--plane); color:var(--ink);
+  font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic UI",system-ui,sans-serif;
+  font-size:14px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px; margin:0 auto; padding:0 22px 72px}
+
+/* ---------- masthead ---------- */
+.mast{padding:34px 0 20px; border-bottom:2px solid var(--ink); margin-bottom:2px}
+.mast-row{display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap}
+.brandmark{display:flex; align-items:center; gap:12px}
+.brandmark svg{flex:none}
+h1{
+  font-family:"Zen Old Mincho",serif; font-weight:700;
+  font-size:clamp(26px,4vw,38px); line-height:1.15; margin:0; letter-spacing:.02em;
+}
+.sub{color:var(--ink2); font-size:13px; margin:6px 0 0}
+.asof{text-align:right; font-size:12px; color:var(--ink2)}
+.asof b{display:block; font-size:19px; color:var(--ink); font-weight:700; letter-spacing:.01em}
+.rule-thin{height:1px; background:var(--ink); opacity:.28; margin-bottom:26px}
+
+/* ---------- controls ---------- */
+.controls{
+  display:flex; gap:10px 22px; flex-wrap:wrap; align-items:center;
+  padding:12px 16px; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; margin-bottom:26px; box-shadow:var(--shadow);
+}
+.ctl{display:flex; align-items:center; gap:9px}
+.ctl-label{font-size:11px; letter-spacing:.13em; color:var(--muted); font-weight:700}
+.seg{display:flex; background:var(--sunk); border-radius:7px; padding:2px}
+.seg button{
+  font:inherit; font-size:12.5px; border:0; background:transparent; color:var(--ink2);
+  padding:5px 12px; border-radius:5px; cursor:pointer; white-space:nowrap;
+}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--surface); color:var(--ink); font-weight:700; box-shadow:0 1px 2px rgba(0,0,0,.10)}
+.seg button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+
+/* ---------- KPI ---------- */
+.kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(196px,1fr)); gap:12px; margin-bottom:30px}
+.kpi{
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:15px 16px 14px; box-shadow:var(--shadow); position:relative; overflow:hidden;
+}
+.kpi::before{content:""; position:absolute; inset:0 auto 0 0; width:3px; background:var(--c)}
+.kpi-name{display:flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; color:var(--ink2)}
+.dot{width:9px; height:9px; border-radius:50%; background:var(--c); flex:none}
+.kpi-val{font-size:29px; font-weight:700; letter-spacing:-.02em; margin-top:7px; line-height:1}
+.kpi-val small{font-size:12px; font-weight:500; color:var(--muted); margin-left:3px; letter-spacing:0}
+.kpi-foot{display:flex; align-items:center; gap:8px; margin-top:9px; font-size:11.5px; color:var(--muted)}
+.delta{font-weight:700; font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; gap:3px}
+.delta.up{color:var(--up)} .delta.down{color:var(--down)} .delta.flat{color:var(--muted)}
+.kpi.empty .kpi-val{color:var(--muted); font-size:19px}
+
+/* ---------- panels ---------- */
+.panel{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:20px 22px 16px; box-shadow:var(--shadow); margin-bottom:22px;
+}
+.panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:4px}
+.eyebrow{font-size:10.5px; letter-spacing:.17em; font-weight:700; color:var(--accent)}
+h2{font-family:"Zen Old Mincho",serif; font-size:19px; font-weight:600; margin:2px 0 0; letter-spacing:.02em}
+.note{font-size:11.5px; color:var(--muted); margin:2px 0 0; max-width:62ch}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:22px}
+@media (max-width:860px){ .grid2{grid-template-columns:1fr} }
+
+.legend{display:flex; flex-wrap:wrap; gap:6px 16px; margin:14px 0 2px}
+.lg{display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--ink2); background:none; border:0; font:inherit; font-size:12px; cursor:pointer; padding:2px 0}
+.lg .swatch{width:14px; height:3px; border-radius:2px; background:var(--c)}
+.lg[aria-pressed="false"]{opacity:.36}
+.lg:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+.chart{position:relative; margin-top:6px}
+.chart svg{display:block; width:100%; height:auto; overflow:visible}
+.gridline{stroke:var(--grid); stroke-width:1}
+.axisline{stroke:var(--axis); stroke-width:1}
+.tick{fill:var(--muted); font-size:10.5px; font-variant-numeric:tabular-nums}
+.tick.y{text-anchor:end}
+.serieslabel{font-size:11px; font-weight:700; paint-order:stroke; stroke:var(--surface); stroke-width:3px; stroke-linejoin:round}
+.axistitle{fill:var(--muted); font-size:10.5px; letter-spacing:.1em}
+
+.tip{
+  position:absolute; pointer-events:none; opacity:0; transition:opacity .12s;
+  background:var(--surface); border:1px solid var(--border); border-radius:8px;
+  box-shadow:0 4px 20px -6px rgba(0,0,0,.35); padding:9px 11px; font-size:12px;
+  min-width:150px; z-index:5;
+}
+.tip h4{margin:0 0 6px; font-size:11.5px; color:var(--muted); font-weight:700; letter-spacing:.04em}
+.tip table{border-collapse:collapse; width:100%}
+.tip td{padding:1px 0}
+.tip td.v{text-align:right; font-variant-numeric:tabular-nums; font-weight:700; padding-left:14px}
+.tip .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; vertical-align:baseline}
+
+/* ---------- table ---------- */
+.tablewrap{overflow:auto; max-height:560px; margin-top:12px; border:1px solid var(--border); border-radius:9px}
+table.data{border-collapse:collapse; width:100%; font-size:12.5px; min-width:660px}
+table.data th, table.data td{padding:7px 12px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap}
+table.data thead th{
+  background:var(--sunk); font-size:10.5px; letter-spacing:.1em; color:var(--ink2);
+  position:sticky; top:0; font-weight:700;
+}
+table.data td.num{text-align:right; font-variant-numeric:tabular-nums}
+table.data tbody tr:last-child td{border-bottom:0}
+table.data tbody tr:hover{background:var(--sunk)}
+.vchip{display:inline-flex; align-items:center; gap:6px; font-weight:700}
+.vchip i{width:8px; height:8px; border-radius:50%; background:var(--c); display:inline-block}
+
+footer{margin-top:34px; padding-top:18px; border-top:1px solid var(--border); font-size:11.5px; color:var(--muted)}
+footer a{color:var(--ink2)}
+.empty-msg{color:var(--muted); font-size:12.5px; padding:26px 0; text-align:center}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important} }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="mast-row">
+      <div class="brandmark">
+        <svg width="34" height="42" viewBox="0 0 34 42" aria-hidden="true">
+          <path d="M17 9c0-4 2.5-6.5 6-7.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>
+          <path d="M17.4 8.6c3.2-3 7.8-2.6 9.4.6-3.6 1.6-7.4.8-9.4-.6z" fill="currentColor" opacity=".28"/>
+          <g fill="currentColor" opacity=".85">
+            <circle cx="17" cy="14" r="4"/><circle cx="11" cy="20" r="4"/><circle cx="23" cy="20" r="4"/>
+            <circle cx="17" cy="25.5" r="4"/><circle cx="8" cy="28.5" r="4"/><circle cx="26" cy="28.5" r="4"/>
+            <circle cx="12.5" cy="34.5" r="4"/><circle cx="21.5" cy="34.5" r="4"/>
+          </g>
+        </svg>
+        <div>
+          <h1>ブドウ相場ボード</h1>
+          <p class="sub">東京都中央卸売市場 9市場・品種別の卸値（日報「販売結果」より）</p>
+        </div>
+      </div>
+      <div class="asof">
+        最新営業日
+        <b id="asof">—</b>
+        <span id="gen"></span>
+      </div>
+    </div>
+  </header>
+  <div class="rule-thin"></div>
+
+  <div class="controls">
+    <div class="ctl">
+      <span class="ctl-label">期間</span>
+      <div class="seg" id="segRange" role="group" aria-label="表示期間"></div>
+    </div>
+    <div class="ctl">
+      <span class="ctl-label">価格の見方</span>
+      <div class="seg" id="segPrice" role="group" aria-label="価格の種類"></div>
+    </div>
+    <div class="ctl">
+      <span class="ctl-label">掘り下げる品種</span>
+      <div class="seg" id="segVariety" role="group" aria-label="品種"></div>
+    </div>
+  </div>
+
+  <section class="kpis" id="kpis" aria-label="最新営業日の品種別卸値"></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="eyebrow">品種別トレンド</div>
+        <h2>卸値の推移</h2>
+      </div>
+    </div>
+    <p class="note" id="noteA"></p>
+    <div class="legend" id="legendA"></div>
+    <div class="chart" id="chartA"><div class="tip" id="tipA"></div></div>
+  </section>
+
+  <div class="grid2">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow">産地くらべ</div>
+          <h2 id="titleB">産地別の卸値</h2>
+        </div>
+      </div>
+      <p class="note">同じ品種でも産地で値が分かれます。データのある上位産地のみ表示。</p>
+      <div class="legend" id="legendB"></div>
+      <div class="chart" id="chartB"><div class="tip" id="tipB"></div></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow">市場くらべ</div>
+          <h2 id="titleC">市場別の卸値</h2>
+        </div>
+      </div>
+      <p class="note" id="noteC">最新営業日の値。棒が長いほど高値で取引されています。</p>
+      <div class="chart" id="chartC"><div class="tip" id="tipC"></div></div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="eyebrow">入荷のボリューム</div>
+        <h2>ぶどう全体の卸売数量</h2>
+      </div>
+    </div>
+    <p class="note">9市場の合計（品種を問わず「ぶどう」として集計された数量）。値と量は逆に動きやすい関係です。</p>
+    <div class="chart" id="chartD"><div class="tip" id="tipD"></div></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="eyebrow">最新営業日の明細</div>
+        <h2 id="titleE">取引の中身</h2>
+      </div>
+    </div>
+    <p class="note">日報に載った高値・中値・安値をそのまま円/kgに換算したもの。「各地」は産地を特定しない扱いです。</p>
+    <div class="tablewrap">
+      <table class="data">
+        <thead><tr>
+          <th>品種</th><th>産地</th><th>市場</th><th>販売方法</th>
+          <th style="text-align:right">規格</th>
+          <th style="text-align:right">高値</th><th style="text-align:right">中値</th><th style="text-align:right">安値</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    出典：東京都中央卸売市場「市場日報／販売結果（青果）」。価格は各市場が公表した高値・中値・安値を、掲載単位（1ケースあたりkg）で割って円/kgに換算しています。速報値のため、確定値と異なる場合があります。
+  </footer>
+</div>
+
+<script>window.__BUDOU__=__DATA__;</script>
+<script>
+(function(){
+"use strict";
+
+const D = window.__BUDOU__;
+const C = {d:0,m:1,v:2,o:3,e:4,unit:5,qty:6,qtyTotal:7,hi:8,mid:9,lo:10};
+
+/* ---- variety → fixed colour slot (never cycled) ---- */
+const V_ORDER = ["シャインマスカット","巨峰","ピオーネ","デラウェア","アレキ"];
+const SLOT = ["--s1","--s2","--s3","--s4","--s5"];
+const vColor = n => `var(${SLOT[Math.max(0, V_ORDER.indexOf(n))] || "--s5"})`;
+const V_FULL = {"アレキ":"アレキサンドリア"};
+
+const PRICE = {high:{k:"hi",label:"高値"}, mid:{k:"mid",label:"中値"}, low:{k:"lo",label:"安値"}};
+const RANGES = [["all","全期間"],["30","直近30営業日"],["14","直近14営業日"]];
+
+const state = {range:"all", price:"mid", variety:"シャインマスカット", hidden:new Set()};
+
+/* ---------- helpers ---------- */
+const median = a => { if(!a.length) return null; const s=[...a].sort((x,y)=>x-y), h=s.length>>1;
+  return s.length%2 ? s[h] : Math.round((s[h-1]+s[h])/2); };
+const yen = n => n==null ? "—" : "¥" + Math.round(n).toLocaleString("ja-JP");
+const kg  = n => n==null ? "—" : Math.round(n).toLocaleString("ja-JP");
+const mdLabel = iso => iso.slice(5).replace("-","/");
+const el = id => document.getElementById(id);
+const cssVar = v => getComputedStyle(document.documentElement).getPropertyValue(v.replace(/var\(|\)/g,"").trim()).trim();
+
+function visibleDates(){
+  const n = state.range === "all" ? D.dates.length : parseInt(state.range,10);
+  return D.dates.slice(Math.max(0, D.dates.length - n));
+}
+const LAST = D.dates[D.dates.length-1];
+
+/* index rows by date for speed */
+const byDate = new Map();
+D.dates.forEach((d,i)=>byDate.set(i,[]));
+D.rows.forEach(r => byDate.get(r[C.d]).push(r));
+
+function priceOf(r){ return r[C[PRICE[state.price].k]]; }
+
+/* median price per (date, variety) */
+function varietySeries(dates){
+  const out = {};
+  V_ORDER.forEach(v => out[v] = []);
+  dates.forEach(dt => {
+    const di = D.dates.indexOf(dt);
+    const buckets = {};
+    (byDate.get(di)||[]).forEach(r => {
+      const p = priceOf(r); if(p==null) return;
+      const v = D.varieties[r[C.v]];
+      (buckets[v] = buckets[v] || []).push(p);
+    });
+    V_ORDER.forEach(v => out[v].push(buckets[v] ? median(buckets[v]) : null));
+  });
+  return out;
+}
+
+/* median price per (date, origin) for one variety */
+function originSeries(dates, variety){
+  const vi = D.varieties.indexOf(variety);
+  const counts = {};
+  D.rows.forEach(r => { if(r[C.v]!==vi || priceOf(r)==null) return;
+    const o = D.origins[r[C.o]]; if(o==="各地") return; counts[o]=(counts[o]||0)+1; });
+  const tops = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).slice(0,4);
+  const out = {};
+  tops.forEach(o => out[o] = []);
+  dates.forEach(dt => {
+    const di = D.dates.indexOf(dt);
+    const buckets = {};
+    (byDate.get(di)||[]).forEach(r => {
+      if(r[C.v]!==vi) return; const p = priceOf(r); if(p==null) return;
+      const o = D.origins[r[C.o]]; if(!(o in out)) return;
+      (buckets[o] = buckets[o] || []).push(p);
+    });
+    tops.forEach(o => out[o].push(buckets[o] ? median(buckets[o]) : null));
+  });
+  return {series:out, order:tops};
+}
+
+/* daily total volume across markets */
+function volumeSeries(dates){
+  return dates.map(dt => {
+    const di = D.dates.indexOf(dt);
+    const perMkt = {};
+    (byDate.get(di)||[]).forEach(r => {
+      const m = r[C.m], q = r[C.qtyTotal];
+      if(q!=null) perMkt[m] = Math.max(perMkt[m]||0, q);
+    });
+    const vals = Object.values(perMkt);
+    return vals.length ? vals.reduce((a,b)=>a+b,0) : null;
+  });
+}
+
+/* ---------- SVG line chart ---------- */
+function lineChart(host, tip, opts){
+  const {labels, series, order, colorOf, height=250, yFmt=yen, unitLabel="円/kg"} = opts;
+  const W = opts.W || 900, H = height, P = {t:14, r:opts.padRight || 74, b:26, l:opts.padLeft || 52};
+  const live = order.filter(k => !opts.hiddenSet || !opts.hiddenSet.has(k));
+  let all = [];
+  live.forEach(k => series[k].forEach(v => { if(v!=null) all.push(v); }));
+  host.querySelectorAll("svg").forEach(s=>s.remove());
+  if(!all.length){ host.insertAdjacentHTML("beforeend", '<p class="empty-msg">この条件のデータがありません</p>'); return; }
+  host.querySelectorAll(".empty-msg").forEach(n=>n.remove());
+
+  const lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi-lo)*0.12 || hi*0.1 || 1;
+  const y0 = Math.max(0, lo-pad), y1 = hi+pad;
+  const nice = niceTicks(y0, y1, 5);
+  const Y = v => P.t + (H-P.t-P.b) * (1 - (v-nice.lo)/(nice.hi-nice.lo));
+  const X = i => P.l + (labels.length<2 ? 0 : (W-P.l-P.r) * i/(labels.length-1));
+
+  const svgns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgns,"svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role","img");
+  svg.setAttribute("aria-label", opts.aria || "折れ線グラフ");
+  let s = "";
+
+  nice.ticks.forEach(t => {
+    s += `<line class="gridline" x1="${P.l}" x2="${W-P.r}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}"/>`;
+    s += `<text class="tick y" x="${P.l-9}" y="${(Y(t)+3.5).toFixed(1)}">${yFmt(t)}</text>`;
+  });
+  s += `<line class="axisline" x1="${P.l}" x2="${W-P.r}" y1="${H-P.b}" y2="${H-P.b}"/>`;
+
+  const step = Math.max(1, Math.ceil(labels.length/9));
+  labels.forEach((lb,i) => { if(i%step && i!==labels.length-1) return;
+    s += `<text class="tick" text-anchor="middle" x="${X(i).toFixed(1)}" y="${H-P.b+15}">${mdLabel(lb)}</text>`; });
+
+  const ends = [];
+  live.forEach(k => {
+    const col = colorOf(k), vals = series[k];
+    let dPath = "", pen = false;
+    vals.forEach((v,i) => { if(v==null){ pen=false; return; }
+      dPath += (pen?"L":"M") + X(i).toFixed(1) + " " + Y(v).toFixed(1) + " "; pen = true; });
+    s += `<path d="${dPath}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    let li = -1; for(let i=vals.length-1;i>=0;i--) if(vals[i]!=null){ li=i; break; }
+    if(li>=0){
+      s += `<circle cx="${X(li).toFixed(1)}" cy="${Y(vals[li]).toFixed(1)}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`;
+      ends.push({k, col, x:X(li)+10, y:Y(vals[li])+4});
+    }
+  });
+  /* nudge end-labels apart so they never overlap */
+  ends.sort((a,b)=>a.y-b.y);
+  for(let i=1;i<ends.length;i++) if(ends[i].y - ends[i-1].y < 13) ends[i].y = ends[i-1].y + 13;
+  ends.forEach(e => {
+    s += `<text class="serieslabel" fill="${e.col}" x="${e.x.toFixed(1)}" y="${e.y.toFixed(1)}">${esc(V_FULL[e.k]||e.k)}</text>`;
+  });
+
+  s += `<line id="cross" class="axisline" x1="0" x2="0" y1="${P.t}" y2="${H-P.b}" stroke-dasharray="3 3" opacity="0"/>`;
+  s += `<rect x="${P.l}" y="0" width="${W-P.l-P.r}" height="${H}" fill="transparent" style="cursor:crosshair"/>`;
+  svg.innerHTML = s;
+  host.insertBefore(svg, tip);
+
+  const cross = svg.querySelector("#cross");
+  const hit = svg.querySelector("rect");
+  hit.addEventListener("mousemove", ev => {
+    const box = svg.getBoundingClientRect();
+    const px = (ev.clientX - box.left) / box.width * W;
+    const i = Math.max(0, Math.min(labels.length-1, Math.round((px-P.l)/((W-P.l-P.r)/Math.max(1,labels.length-1)))));
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity","1");
+    const rows = live.map(k => [k, series[k][i]]).filter(r => r[1]!=null);
+    tip.innerHTML = `<h4>${labels[i]}</h4><table>` +
+      (rows.length ? rows.map(([k,v]) =>
+        `<tr><td><span class="sw" style="background:${colorOf(k)}"></span>${esc(k)}</td><td class="v">${yFmt(v)}</td></tr>`).join("")
+        : `<tr><td colspan="2" style="color:var(--muted)">データなし</td></tr>`) +
+      `</table><div style="margin-top:5px;font-size:10.5px;color:var(--muted)">${unitLabel}</div>`;
+    tip.style.opacity = "1";
+    const hostBox = host.getBoundingClientRect();
+    const left = (X(i)/W)*hostBox.width;
+    tip.style.left = Math.min(hostBox.width - tip.offsetWidth - 4, Math.max(0, left + 14)) + "px";
+    tip.style.top = Math.max(0, ev.clientY - hostBox.top - tip.offsetHeight - 12) + "px";
+  });
+  hit.addEventListener("mouseleave", () => { tip.style.opacity="0"; cross.setAttribute("opacity","0"); });
+}
+
+function niceTicks(lo, hi, n){
+  const span = hi-lo || 1;
+  const raw = span/n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1,2,2.5,5,10].map(m=>m*mag).find(v=>v>=raw) || mag*10;
+  const L = Math.floor(lo/step)*step, Hh = Math.ceil(hi/step)*step;
+  const ticks = []; for(let v=L; v<=Hh+1e-9; v+=step) ticks.push(Math.round(v*1000)/1000);
+  return {lo:L, hi:Hh, ticks};
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---------- horizontal bars: markets ---------- */
+function marketBars(host, tip){
+  const vi = D.varieties.indexOf(state.variety);
+  const di = D.dates.indexOf(LAST);
+  const buckets = {};
+  (byDate.get(di)||[]).forEach(r => {
+    if(r[C.v]!==vi) return; const p = priceOf(r); if(p==null) return;
+    const m = D.markets[r[C.m]]; (buckets[m]=buckets[m]||[]).push(p);
+  });
+  const rows = Object.keys(buckets).map(m => [m, median(buckets[m]), buckets[m].length])
+                     .sort((a,b)=>b[1]-a[1]);
+  host.querySelectorAll("svg,.empty-msg").forEach(n=>n.remove());
+  if(!rows.length){ host.insertAdjacentHTML("beforeend", `<p class="empty-msg">${esc(state.variety)}は${LAST}の取引データがありません</p>`); return; }
+
+  const W=440, rowH=27, P={t:8,r:58,b:22,l:56};
+  const H = P.t + rows.length*rowH + P.b;
+  const max = Math.max(...rows.map(r=>r[1]));
+  const X = v => P.l + (W-P.l-P.r) * (v/max);
+  const col = vColor(state.variety);
+  let s = "";
+  rows.forEach(([m,v],i) => {
+    const y = P.t + i*rowH;
+    s += `<text class="tick" x="${P.l-9}" y="${y+15}" text-anchor="end">${esc(m)}</text>`;
+    s += `<rect x="${P.l}" y="${y+4}" width="${(X(v)-P.l).toFixed(1)}" height="15" rx="4" fill="${col}" data-i="${i}"/>`;
+    s += `<text class="tick" x="${(X(v)+8).toFixed(1)}" y="${y+16}" style="font-weight:700;fill:var(--ink2)">${yen(v)}</text>`;
+  });
+  s += `<line class="axisline" x1="${P.l}" x2="${P.l}" y1="${P.t}" y2="${H-P.b}"/>`;
+  s += `<text class="axistitle" x="${P.l}" y="${H-6}">円/kg（${PRICE[state.price].label}・${LAST}）</text>`;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role","img");
+  svg.setAttribute("aria-label", `${state.variety}の市場別${PRICE[state.price].label}`);
+  svg.innerHTML = s;
+  host.insertBefore(svg, tip);
+
+  svg.querySelectorAll("rect[data-i]").forEach(rect => {
+    rect.addEventListener("mouseenter", ev => {
+      const [m,v,n] = rows[+rect.dataset.i];
+      tip.innerHTML = `<h4>${esc(m)}市場</h4><table>
+        <tr><td>${PRICE[state.price].label}</td><td class="v">${yen(v)}/kg</td></tr>
+        <tr><td>掲載件数</td><td class="v">${n}</td></tr></table>`;
+      tip.style.opacity="1";
+      const b = host.getBoundingClientRect();
+      tip.style.left = Math.min(b.width - tip.offsetWidth - 4, ev.clientX - b.left + 12) + "px";
+      tip.style.top  = Math.max(0, ev.clientY - b.top - tip.offsetHeight - 10) + "px";
+    });
+    rect.addEventListener("mouseleave", () => tip.style.opacity="0");
+  });
+}
+
+/* ---------- volume bars ---------- */
+function volumeChart(host, tip){
+  const dates = visibleDates();
+  const vals = volumeSeries(dates);
+  host.querySelectorAll("svg,.empty-msg").forEach(n=>n.remove());
+  const present = vals.filter(v=>v!=null);
+  if(!present.length){ host.insertAdjacentHTML("beforeend",'<p class="empty-msg">データがありません</p>'); return; }
+  const W=900, H=170, P={t:12,r:20,b:26,l:60};
+  const nice = niceTicks(0, Math.max(...present), 4);
+  const Y = v => P.t + (H-P.t-P.b)*(1 - v/nice.hi);
+  const bw = Math.max(2, (W-P.l-P.r)/dates.length - 3);
+  const X = i => P.l + (W-P.l-P.r)*(i+0.5)/dates.length;
+  let s = "";
+  nice.ticks.forEach(t => {
+    s += `<line class="gridline" x1="${P.l}" x2="${W-P.r}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}"/>`;
+    s += `<text class="tick y" x="${P.l-9}" y="${(Y(t)+3.5).toFixed(1)}">${(t/1000).toFixed(0)}t</text>`;
+  });
+  vals.forEach((v,i)=>{ if(v==null) return;
+    s += `<rect x="${(X(i)-bw/2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H-P.b-Y(v)).toFixed(1)}" rx="2" fill="var(--accent)" opacity=".72" data-i="${i}"/>`; });
+  s += `<line class="axisline" x1="${P.l}" x2="${W-P.r}" y1="${H-P.b}" y2="${H-P.b}"/>`;
+  const step = Math.max(1, Math.ceil(dates.length/9));
+  dates.forEach((d,i)=>{ if(i%step && i!==dates.length-1) return;
+    s += `<text class="tick" text-anchor="middle" x="${X(i).toFixed(1)}" y="${H-P.b+15}">${mdLabel(d)}</text>`; });
+  const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  svg.setAttribute("role","img");
+  svg.setAttribute("aria-label","ぶどうの日別卸売数量");
+  svg.innerHTML = s;
+  host.insertBefore(svg, tip);
+  svg.querySelectorAll("rect[data-i]").forEach(rect=>{
+    rect.addEventListener("mouseenter", ev=>{
+      const i = +rect.dataset.i;
+      tip.innerHTML = `<h4>${dates[i]}</h4><table><tr><td>卸売数量</td><td class="v">${kg(vals[i])} kg</td></tr></table>`;
+      tip.style.opacity="1";
+      const b = host.getBoundingClientRect();
+      tip.style.left = Math.min(b.width - tip.offsetWidth - 4, Math.max(0, ev.clientX - b.left + 12)) + "px";
+      tip.style.top  = Math.max(0, ev.clientY - b.top - tip.offsetHeight - 10) + "px";
+    });
+    rect.addEventListener("mouseleave", ()=>tip.style.opacity="0");
+  });
+}
+
+/* ---------- KPI ---------- */
+function renderKpis(){
+  const li = D.dates.length-1;
+  const target = D.dates[Math.max(0, li-5)];
+  const cur = varietySeries([LAST]), prev = varietySeries([target]);
+  el("kpis").innerHTML = V_ORDER.map(v => {
+    const now = cur[v][0], was = prev[v][0];
+    if(now==null) return `<div class="kpi empty" style="--c:${vColor(v)}">
+      <div class="kpi-name"><span class="dot"></span>${esc(V_FULL[v]||v)}</div>
+      <div class="kpi-val">取引なし</div>
+      <div class="kpi-foot">${LAST}</div></div>`;
+    let d = "";
+    if(was!=null && was>0){
+      const pct = (now-was)/was*100;
+      const cls = Math.abs(pct)<1 ? "flat" : (pct>0 ? "up" : "down");
+      const arrow = Math.abs(pct)<1 ? "→" : (pct>0 ? "▲" : "▼");
+      d = `<span class="delta ${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</span><span>約1週間前比</span>`;
+    } else d = `<span>比較データなし</span>`;
+    return `<div class="kpi" style="--c:${vColor(v)}">
+      <div class="kpi-name"><span class="dot"></span>${esc(V_FULL[v]||v)}</div>
+      <div class="kpi-val">${yen(now)}<small>/kg</small></div>
+      <div class="kpi-foot">${d}</div></div>`;
+  }).join("");
+}
+
+/* ---------- table ---------- */
+function renderTable(){
+  const di = D.dates.indexOf(LAST);
+  const rows = (byDate.get(di)||[]).slice().sort((a,b)=>
+    (V_ORDER.indexOf(D.varieties[a[C.v]]) - V_ORDER.indexOf(D.varieties[b[C.v]]))
+    || (b[C.mid]||0)-(a[C.mid]||0));
+  el("tbody").innerHTML = rows.map(r => {
+    const v = D.varieties[r[C.v]];
+    return `<tr>
+      <td><span class="vchip" style="--c:${vColor(v)}"><i></i>${esc(V_FULL[v]||v)}</span></td>
+      <td>${esc(D.origins[r[C.o]])}</td>
+      <td>${esc(D.markets[r[C.m]])}</td>
+      <td style="color:var(--ink2)">${esc(D.methods[r[C.e]])}</td>
+      <td class="num" style="color:var(--muted)">${r[C.unit]}kg</td>
+      <td class="num">${yen(r[C.hi])}</td>
+      <td class="num" style="font-weight:700">${yen(r[C.mid])}</td>
+      <td class="num">${yen(r[C.lo])}</td>
+    </tr>`;
+  }).join("");
+  el("titleE").textContent = `取引の中身（${LAST}）`;
+}
+
+/* ---------- legends & segments ---------- */
+function seg(host, items, current, onPick){
+  host.innerHTML = items.map(([k,label]) =>
+    `<button type="button" data-k="${k}" aria-pressed="${k===current}">${esc(label)}</button>`).join("");
+  host.querySelectorAll("button").forEach(b =>
+    b.addEventListener("click", () => onPick(b.dataset.k)));
+}
+
+function legend(host, keys, colorOf, toggleable){
+  host.innerHTML = keys.map(k =>
+    `<button type="button" class="lg" data-k="${k}" style="--c:${colorOf(k)}" aria-pressed="${toggleable ? !state.hidden.has(k) : true}">
+       <span class="swatch"></span>${esc(V_FULL[k]||k)}</button>`).join("");
+  if(!toggleable) return;
+  host.querySelectorAll(".lg").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.k;
+    if(state.hidden.has(k)) state.hidden.delete(k); else state.hidden.add(k);
+    if(state.hidden.size === V_ORDER.length) state.hidden.delete(k);
+    render();
+  }));
+}
+
+/* ---------- render ---------- */
+function render(){
+  const dates = visibleDates();
+  const pl = PRICE[state.price].label;
+
+  el("noteA").textContent = `各日・各市場・各産地の「${pl}」を円/kgに換算し、その中央値を品種ごとに結んだもの。凡例をクリックで表示を切り替えられます。`;
+  el("titleB").textContent = `${V_FULL[state.variety]||state.variety}の産地別`;
+  el("titleC").textContent = `${V_FULL[state.variety]||state.variety}の市場別`;
+
+  const vs = varietySeries(dates);
+  legend(el("legendA"), V_ORDER, vColor, true);
+  lineChart(el("chartA"), el("tipA"), {
+    labels:dates, series:vs, order:V_ORDER, colorOf:vColor, padRight:126,
+    hiddenSet:state.hidden, height:270, aria:`品種別の${pl}の推移`
+  });
+
+  const {series:os, order:oo} = originSeries(dates, state.variety);
+  const oColor = k => `var(${SLOT[oo.indexOf(k)] || "--s5"})`;
+  legend(el("legendB"), oo, oColor, false);
+  lineChart(el("chartB"), el("tipB"), {
+    labels:dates, series:os, order:oo, colorOf:oColor, height:215,
+    W:520, padLeft:48, padRight:52,
+    aria:`${state.variety}の産地別${pl}の推移`
+  });
+
+  marketBars(el("chartC"), el("tipC"));
+  volumeChart(el("chartD"), el("tipD"));
+  renderKpis();
+}
+
+/* ---------- boot ---------- */
+el("asof").textContent = LAST;
+el("gen").textContent = `更新 ${D.generated}`;
+function refreshSegs(){
+  seg(el("segRange"), RANGES, state.range, k => { state.range=k; refreshSegs(); render(); });
+  seg(el("segPrice"), [["high","高値"],["mid","中値"],["low","安値"]], state.price, k => { state.price=k; refreshSegs(); render(); });
+  seg(el("segVariety"), V_ORDER.map(v=>[v, V_FULL[v]||v]), state.variety, k => { state.variety=k; refreshSegs(); render(); });
+}
+refreshSegs();
+renderTable();
+render();
+window.addEventListener("resize", () => { clearTimeout(window.__rt); window.__rt = setTimeout(render, 180); });
+})();
+</script>
