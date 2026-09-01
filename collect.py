@@ -26,6 +26,7 @@ RAW   = os.path.join(ROOT, "raw_history.csv")
 NORM  = os.path.join(ROOT, "budou_prices.csv")
 SITE  = os.path.join(ROOT, "site")
 TPL   = os.path.join(ROOT, "template.html")
+ROSTER = os.path.join(ROOT, "varieties.json")   # これまでに出てきた品種の台帳
 
 RAW_HEAD = ["date","market","qty_total_kg","method","qty_kg","variety","origin","unit_kg","high","mid","low"]
 KEY      = ("date","market","method","variety","origin","unit_kg")
@@ -48,6 +49,13 @@ VARIETY_FIX = {
     "ハウスシャイン":   "ハウスシャインマスカット",
     "ネオマスカッ":     "ネオマスカット",
     "サニールージ":     "サニールージュ",
+}
+
+# ちょうど7文字だが「切れていない」と確認ずみの品種。
+# 新しい品種が出ると 7文字のものは「要確認」として報告されるので、
+# 中身を確かめたうえでここに足すと以後は静かになる。
+VARIETY_OK = {
+    "シャインマスカット",   # VARIETY_FIX で復元ずみ
 }
 
 
@@ -221,7 +229,7 @@ def normalize(merged):
     return out
 
 
-def build_site(norm):
+def build_site(norm, new_varieties=(), needs_check=()):
     def index(vals):
         u = sorted(set(vals))
         return u, {v: i for i, v in enumerate(u)}
@@ -241,6 +249,8 @@ def build_site(norm):
         "dates": dates, "markets": mkts, "varieties": vars_, "origins": orgs, "methods": meths,
         "cols": ["d","m","v","o","e","unit","qty","qtyTotal","hi","mid","lo"],
         "rows": data,
+        "newVarieties": list(new_varieties),
+        "needsCheck": list(needs_check),
     }
     os.makedirs(SITE, exist_ok=True)
     blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -257,25 +267,76 @@ def build_site(norm):
 
     print("最新営業日: %s / %d 営業日 / %d 行" % (dates[-1], len(dates), len(data)))
     print("-> site/index.html")
-    report_varieties(norm)
 
 
-def report_varieties(norm):
-    """品種の顔ぶれをログに出す。見慣れない（＝切れた）表記が出たら
-    collect.py の VARIETY_FIX に追加すること。"""
-    n = Counter()
-    span = {}
+def track_varieties(norm):
+    """品種の台帳を更新し、前回になかった品種を返す。
+
+    品種は決め打ちしていないので新顔は自動でデータに入る。問題は
+    「入ったことに誰も気づかない」ことなので、台帳と突き合わせて報告する。
+    """
+    prev = {}
+    first_time = not os.path.exists(ROSTER)
+    if not first_time:
+        try:
+            prev = json.load(io.open(ROSTER, encoding="utf-8")).get("varieties", {})
+        except Exception:
+            prev = {}
+
+    cur = {}
     for r in norm:
-        v = r["variety"]
-        n[v] += 1
-        lo, hi = span.get(v, (r["date"], r["date"]))
-        span[v] = (min(lo, r["date"]), max(hi, r["date"]))
-    print("\n品種の顔ぶれ（%d 種）" % len(n))
-    for v, c in n.most_common():
-        lo, hi = span[v]
-        mark = "  ← 要確認（7文字で切れている可能性）" if len(v) == 7 else ""
-        print("  %-24s %5d行  %s 〜 %s%s" % (v, c, lo, hi, mark))
+        v, d = r["variety"], r["date"]
+        e = cur.get(v)
+        if e is None:
+            cur[v] = {"first": d, "last": d, "rows": 1}
+        else:
+            e["first"] = min(e["first"], d)
+            e["last"] = max(e["last"], d)
+            e["rows"] += 1
+
+    # 台帳がまだ無い初回は、全部が新顔になってしまうので基準作りに徹する
+    new = [] if first_time else sorted(set(cur) - set(prev), key=lambda v: cur[v]["first"])
+    check = sorted(v for v in cur if len(v) == 7 and v not in VARIETY_OK)
+
+    with io.open(ROSTER, "w", encoding="utf-8") as f:
+        json.dump({"updated": datetime.now(JST).strftime("%Y-%m-%d %H:%M"),
+                   "varieties": dict(sorted(cur.items(), key=lambda kv: -kv[1]["rows"]))},
+                  f, ensure_ascii=False, indent=1, sort_keys=False)
+
+    lines = ["", "品種の顔ぶれ（%d 種）%s" % (len(cur), "  ※台帳を新規作成" if first_time else "")]
+    for v, e in sorted(cur.items(), key=lambda kv: -kv[1]["rows"]):
+        tag = ""
+        if v in new:
+            tag = "  ★新登場"
+        elif v in check:
+            tag = "  ← 名前を要確認（7文字で切れている可能性）"
+        lines.append("  %-24s %5d行  %s 〜 %s%s" % (v, e["rows"], e["first"], e["last"], tag))
+    if new:
+        lines += ["", "★ 新しい品種が %d 件: %s" % (len(new), "、".join(new))]
+    if check:
+        lines += ["", "名前が切れているかもしれない品種: %s" % "、".join(check),
+                  "  正しければ collect.py の VARIETY_OK に、切れていれば VARIETY_FIX に追加してください。"]
+    text = "\n".join(lines)
+    print(text)
+
+    # Actions の実行サマリーにも出す（ログを開かなくても気づけるように）
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        try:
+            with io.open(summary, "a", encoding="utf-8") as f:
+                if new:
+                    f.write("## ★ 新しい品種が出ました\n\n")
+                    for v in new:
+                        f.write("- **%s** — 初出 %s（%d行）\n" % (v, cur[v]["first"], cur[v]["rows"]))
+                    f.write("\n")
+                f.write("```\n%s\n```\n" % text.strip())
+        except Exception:
+            pass
+
+    return new, check
 
 
 if __name__ == "__main__":
-    build_site(normalize(merge(collect())))
+    _norm = normalize(merge(collect()))
+    _new, _check = track_varieties(_norm)
+    build_site(_norm, _new, _check)
