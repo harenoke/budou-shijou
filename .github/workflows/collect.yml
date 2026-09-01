@@ -7,9 +7,17 @@ on:
   workflow_dispatch:      # 手動実行用（Actions タブの Run workflow）
     inputs:
       days_back:
-        description: "さかのぼる日数（初回のまとめ取りは 70 など）"
+        description: "さかのぼる日数（まとめ取りは 120 など）"
         required: false
         default: "12"
+      days_skip:
+        description: "何日前から始めるか（分割して取るとき用。通常は 0）"
+        required: false
+        default: "0"
+      workers:
+        description: "同時接続数（出典サーバーが渋いときは 2〜3 に下げる）"
+        required: false
+        default: "4"
 
 permissions:
   contents: write         # データの追記コミット用
@@ -33,6 +41,8 @@ jobs:
       - name: 日報から収集してサイトを生成
         env:
           DAYS_BACK: ${{ inputs.days_back || '12' }}
+          DAYS_SKIP: ${{ inputs.days_skip || '0' }}
+          WORKERS:   ${{ inputs.workers   || '4' }}
         run: python collect.py
 
       - name: 更新をコミット
