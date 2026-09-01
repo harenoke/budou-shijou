@@ -9,10 +9,13 @@ GitHub Actions（インターネット制限なし）で毎日実行される想
   site/data.json         グラフ用の圧縮データ
 """
 import csv, io, json, os, sys, urllib.request, urllib.error
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 BASE_URL   = "https://www.shijou-nippo.metro.tokyo.lg.jp"
 DAYS_BACK  = int(os.environ.get("DAYS_BACK", "12"))
+WORKERS    = int(os.environ.get("WORKERS", "12"))
 MARKET_IDS = range(1, 10)          # K1..K9（K0 は全市場計＝価格なし）
 JST        = timezone(timedelta(hours=9))
 
@@ -26,8 +29,24 @@ RAW_HEAD = ["date","market","qty_total_kg","method","qty_kg","variety","origin",
 KEY      = ("date","market","method","variety","origin","unit_kg")
 DASH     = "－"                # 日報で「値なし」を表す全角ダッシュ
 
-# 出典側で品種名が途中で切れているものの補正
-VARIETY_FIX = {"シャインマスカ": "シャインマスカット", "シャインマスカッ": "シャインマスカット"}
+# 出典側は品種名を7文字で切るため、確実に判別できるものだけ元の名前に戻す。
+# 未知の切れ方はそのまま通し、実行ログの「品種の顔ぶれ」に出るので、
+# 見慣れない表記が出たらここに足していく。
+VARIETY_FIX = {
+    "シャインマスカ":   "シャインマスカット",
+    "シャインマスカッ": "シャインマスカット",
+    "アレキ":           "アレキサンドリア",
+    "瀬戸ジャイアン":   "瀬戸ジャイアンツ",
+    "ロザリオビアン":   "ロザリオビアンコ",
+    "マスカットベー":   "マスカットベーリーA",
+    "オーロラブラッ":   "オーロラブラック",
+    "オーロラブラ":     "オーロラブラック",
+    "クイーンルージ":   "クイーンルージュ",
+    "ハウスデラウェ":   "ハウスデラウェア",
+    "ハウスシャイン":   "ハウスシャインマスカット",
+    "ネオマスカッ":     "ネオマスカット",
+    "サニールージ":     "サニールージュ",
+}
 
 
 # --------------------------------------------------------------- 取得
@@ -81,18 +100,28 @@ def parse_market_csv(text, date):
 
 
 def collect():
+    """直近 DAYS_BACK 日 × 9市場を並列に取りに行く。"""
     today = datetime.now(JST).date()
-    rows, ok, miss = [], 0, 0
+    jobs = []
     for back in range(1, DAYS_BACK + 1):
-        d = today - timedelta(days=back)
-        ymd = d.strftime("%Y%m%d")
+        ymd = (today - timedelta(days=back)).strftime("%Y%m%d")
         for k in MARKET_IDS:
-            text = fetch("%s/SN/%s/%s/Sei/Sei_K%d.csv" % (BASE_URL, ymd[:6], ymd, k))
-            if text is None:
+            jobs.append((ymd, k))
+
+    def one(job):
+        ymd, k = job
+        text = fetch("%s/SN/%s/%s/Sei/Sei_K%d.csv" % (BASE_URL, ymd[:6], ymd, k))
+        return parse_market_csv(text, ymd) if text is not None else None
+
+    rows, ok, miss = [], 0, 0
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        for got in pool.map(one, jobs):
+            if got is None:
                 miss += 1
-                continue
-            ok += 1
-            rows += parse_market_csv(text, ymd)
+            else:
+                ok += 1
+                rows += got
+    rows.sort()
     print("取得: %d ページ / 休市・未掲載 %d ページ / ぶどう %d 行" % (ok, miss, len(rows)))
     if ok == 0:
         sys.exit("取得できたページが 0 件でした。サイト構成が変わった可能性があります。")
@@ -205,6 +234,24 @@ def build_site(norm):
 
     print("最新営業日: %s / %d 営業日 / %d 行" % (dates[-1], len(dates), len(data)))
     print("-> site/index.html")
+    report_varieties(norm)
+
+
+def report_varieties(norm):
+    """品種の顔ぶれをログに出す。見慣れない（＝切れた）表記が出たら
+    collect.py の VARIETY_FIX に追加すること。"""
+    n = Counter()
+    span = {}
+    for r in norm:
+        v = r["variety"]
+        n[v] += 1
+        lo, hi = span.get(v, (r["date"], r["date"]))
+        span[v] = (min(lo, r["date"]), max(hi, r["date"]))
+    print("\n品種の顔ぶれ（%d 種）" % len(n))
+    for v, c in n.most_common():
+        lo, hi = span[v]
+        mark = "  ← 要確認（7文字で切れている可能性）" if len(v) == 7 else ""
+        print("  %-24s %5d行  %s 〜 %s%s" % (v, c, lo, hi, mark))
 
 
 if __name__ == "__main__":

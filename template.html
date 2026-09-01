@@ -11,6 +11,7 @@
   --accent:#6d3f7d; --accent-soft:#f0e7f3;
   --up:#c0392b; --down:#0f7a55;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
   --shadow:0 1px 2px rgba(23,19,28,.05), 0 8px 24px -16px rgba(23,19,28,.28);
 }
 @media (prefers-color-scheme: dark){
@@ -22,6 +23,7 @@
     --accent:#c49ad3; --accent-soft:#241a2b;
     --up:#e66767; --down:#2fae7e;
     --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    --s6:#008300; --s7:#9085e9; --s8:#e66767;
     --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.8);
   }
 }
@@ -33,6 +35,7 @@
   --accent:#c49ad3; --accent-soft:#241a2b;
   --up:#e66767; --down:#2fae7e;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+  --s6:#008300; --s7:#9085e9; --s8:#e66767;
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.8);
 }
 
@@ -105,9 +108,37 @@ h2{font-family:"Zen Old Mincho",serif; font-size:19px; font-weight:600; margin:2
 
 .legend{display:flex; flex-wrap:wrap; gap:6px 16px; margin:14px 0 2px}
 .lg{display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--ink2); background:none; border:0; font:inherit; font-size:12px; cursor:pointer; padding:2px 0}
-.lg .swatch{width:14px; height:3px; border-radius:2px; background:var(--c)}
+.lg .swatch{width:16px; height:3px; border-radius:2px; background:var(--c)}
+.lg.dashed .swatch{background:repeating-linear-gradient(to right,var(--c) 0 5px,transparent 5px 8px)}
 .lg[aria-pressed="false"]{opacity:.36}
 .lg:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+/* ---------- variety small multiples ---------- */
+.sparks{display:grid; grid-template-columns:repeat(auto-fill,minmax(206px,1fr)); gap:2px 0; margin-top:10px}
+.spark{
+  display:grid; grid-template-columns:1fr auto; grid-template-areas:"name price" "plot plot" "meta meta";
+  gap:2px 10px; padding:11px 12px 9px; border-radius:9px; align-content:start;
+  border:1px solid transparent;
+}
+.spark:hover{background:var(--sunk)}
+.spark.sel{border-color:var(--c); background:var(--sunk)}
+.spark button{all:unset; cursor:pointer; display:contents}
+.spark .nm{grid-area:name; font-size:12.5px; font-weight:700; display:flex; align-items:center; gap:6px; min-width:0}
+.spark .nm i{width:8px; height:8px; border-radius:50%; background:var(--c); flex:none}
+.spark .nm span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.spark .pr{grid-area:price; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap}
+.spark .pr.stale{color:var(--muted); font-weight:500}
+.spark svg{grid-area:plot; width:100%; height:34px; display:block; margin:3px 0 1px}
+.spark .mt{grid-area:meta; font-size:10.5px; color:var(--muted); font-variant-numeric:tabular-nums}
+select.picker{
+  font:inherit; font-size:12.5px; padding:5px 26px 5px 10px; border-radius:7px;
+  border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer;
+  appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 14px) 51%, calc(100% - 9px) 51%;
+  background-size:5px 5px, 5px 5px; background-repeat:no-repeat;
+}
+select.picker:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
 
 .chart{position:relative; margin-top:6px}
 .chart svg{display:block; width:100%; height:auto; overflow:visible}
@@ -189,11 +220,22 @@ footer a{color:var(--ink2)}
     </div>
     <div class="ctl">
       <span class="ctl-label">掘り下げる品種</span>
-      <div class="seg" id="segVariety" role="group" aria-label="品種"></div>
+      <div id="pickVariety"></div>
     </div>
   </div>
 
   <section class="kpis" id="kpis" aria-label="最新営業日の品種別卸値"></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="eyebrow">品種の顔ぶれ</div>
+        <h2 id="titleS">日報に出てくる全品種</h2>
+      </div>
+    </div>
+    <p class="note" id="noteS"></p>
+    <div class="sparks" id="sparks"></div>
+  </section>
 
   <section class="panel">
     <div class="panel-head">
@@ -276,16 +318,27 @@ footer a{color:var(--ink2)}
 const D = window.__BUDOU__;
 const C = {d:0,m:1,v:2,o:3,e:4,unit:5,qty:6,qtyTotal:7,hi:8,mid:9,lo:10};
 
-/* ---- variety → fixed colour slot (never cycled) ---- */
-const V_ORDER = ["シャインマスカット","巨峰","ピオーネ","デラウェア","アレキ"];
-const SLOT = ["--s1","--s2","--s3","--s4","--s5"];
-const vColor = n => `var(${SLOT[Math.max(0, V_ORDER.indexOf(n))] || "--s5"})`;
-const V_FULL = {"アレキ":"アレキサンドリア"};
+/* ---- 品種は出典に出てきたものをすべて拾う ----
+   掲載行数の多い順に固定の色を割り当てる（並び替えても色は動かない）。
+   9種目以降は同じ色相を破線とセットで使い分ける。 */
+const SLOT = ["--s1","--s2","--s3","--s4","--s5","--s6","--s7","--s8"];
+const V_COUNT = {};
+D.rows.forEach(r => { const v = D.varieties[r[2]]; V_COUNT[v] = (V_COUNT[v]||0) + 1; });
+const V_ORDER = Object.keys(V_COUNT).sort((a,b) => V_COUNT[b]-V_COUNT[a] || a.localeCompare(b,"ja"));
+const V_RANK = {}; V_ORDER.forEach((v,i) => V_RANK[v] = i);
+const vColor = n => `var(${SLOT[(V_RANK[n] || 0) % SLOT.length]})`;
+const vDash  = n => (V_RANK[n] || 0) >= SLOT.length ? "6 4" : null;
+const V_FULL = {};
+const PLOT_MAX = 6;   /* 折れ線の初期表示数 */
 
 const PRICE = {high:{k:"hi",label:"高値"}, mid:{k:"mid",label:"中値"}, low:{k:"lo",label:"安値"}};
 const RANGES = [["all","全期間"],["30","直近30営業日"],["14","直近14営業日"]];
 
-const state = {range:"all", price:"mid", variety:"シャインマスカット", hidden:new Set()};
+const state = {
+  range:"all", price:"mid",
+  variety: V_ORDER[0],
+  hidden: new Set(V_ORDER.slice(PLOT_MAX)),
+};
 
 /* ---------- helpers ---------- */
 const median = a => { if(!a.length) return null; const s=[...a].sort((x,y)=>x-y), h=s.length>>1;
@@ -403,7 +456,8 @@ function lineChart(host, tip, opts){
     let dPath = "", pen = false;
     vals.forEach((v,i) => { if(v==null){ pen=false; return; }
       dPath += (pen?"L":"M") + X(i).toFixed(1) + " " + Y(v).toFixed(1) + " "; pen = true; });
-    s += `<path d="${dPath}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    const dash = opts.dashOf ? opts.dashOf(k) : null;
+    s += `<path d="${dPath}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${dash ? ` stroke-dasharray="${dash}"` : ""}/>`;
     let li = -1; for(let i=vals.length-1;i>=0;i--) if(vals[i]!=null){ li=i; break; }
     if(li>=0){
       s += `<circle cx="${X(li).toFixed(1)}" cy="${Y(vals[li]).toFixed(1)}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`;
@@ -552,7 +606,9 @@ function renderKpis(){
   const li = D.dates.length-1;
   const target = D.dates[Math.max(0, li-5)];
   const cur = varietySeries([LAST]), prev = varietySeries([target]);
-  el("kpis").innerHTML = V_ORDER.map(v => {
+  const traded = V_ORDER.filter(v => cur[v][0] != null);
+  const show = traded.length ? traded : V_ORDER.slice(0, 5);
+  el("kpis").innerHTML = show.map(v => {
     const now = cur[v][0], was = prev[v][0];
     if(now==null) return `<div class="kpi empty" style="--c:${vColor(v)}">
       <div class="kpi-name"><span class="dot"></span>${esc(V_FULL[v]||v)}</div>
@@ -602,9 +658,9 @@ function seg(host, items, current, onPick){
     b.addEventListener("click", () => onPick(b.dataset.k)));
 }
 
-function legend(host, keys, colorOf, toggleable){
+function legend(host, keys, colorOf, toggleable, dashOf){
   host.innerHTML = keys.map(k =>
-    `<button type="button" class="lg" data-k="${k}" style="--c:${colorOf(k)}" aria-pressed="${toggleable ? !state.hidden.has(k) : true}">
+    `<button type="button" class="lg${dashOf && dashOf(k) ? " dashed" : ""}" data-k="${esc(k)}" style="--c:${colorOf(k)}" aria-pressed="${toggleable ? !state.hidden.has(k) : true}">
        <span class="swatch"></span>${esc(V_FULL[k]||k)}</button>`).join("");
   if(!toggleable) return;
   host.querySelectorAll(".lg").forEach(b => b.addEventListener("click", () => {
@@ -615,20 +671,61 @@ function legend(host, keys, colorOf, toggleable){
   }));
 }
 
+/* ---------- 全品種のスパークライン ---------- */
+function renderSparks(){
+  const dates = visibleDates();
+  const series = varietySeries(dates);
+  const cards = V_ORDER.map(v => {
+    const vals = series[v];
+    let last = -1; for(let i=vals.length-1;i>=0;i--) if(vals[i]!=null){ last=i; break; }
+    const days = vals.filter(x=>x!=null).length;
+    return {v, vals, last, price: last<0 ? null : vals[last], lastDate: last<0 ? null : dates[last], days};
+  }).filter(c => c.days > 0);
+
+  el("noteS").textContent = `この期間に日報へ出てきた品種は ${cards.length} 種。カードを選ぶと下の産地別・市場別がその品種に切り替わります。灰色の値は最終取引日が最新営業日より前のものです。`;
+
+  el("sparks").innerHTML = cards.map(c => {
+    const W = 200, H = 34, pts = c.vals;
+    const have = pts.filter(x=>x!=null);
+    const lo = Math.min(...have), hi = Math.max(...have), span = (hi-lo) || 1;
+    const X = i => pts.length<2 ? W/2 : (W * i/(pts.length-1));
+    const Y = v => H - 3 - (H-6) * (v-lo)/span;
+    let d = "", pen = false;
+    pts.forEach((v,i)=>{ if(v==null){ pen=false; return; }
+      d += (pen?"L":"M") + X(i).toFixed(1) + " " + Y(v).toFixed(1) + " "; pen = true; });
+    const stale = c.lastDate !== LAST;
+    return `<div class="spark${c.v===state.variety?" sel":""}" style="--c:${vColor(c.v)}">
+      <button type="button" data-v="${esc(c.v)}" aria-label="${esc(c.v)}を掘り下げる">
+        <span class="nm"><i></i><span>${esc(c.v)}</span></span>
+        <span class="pr${stale?" stale":""}">${yen(c.price)}<small style="font-size:10px;font-weight:500;color:var(--muted)">/kg</small></span>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(c.v)}の推移">
+          <path d="${d}" fill="none" stroke="${vColor(c.v)}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"${vDash(c.v)?` stroke-dasharray="${vDash(c.v)}"`:""}/>
+          ${c.last>=0?`<circle cx="${X(c.last).toFixed(1)}" cy="${Y(c.price).toFixed(1)}" r="2.4" fill="${vColor(c.v)}"/>`:""}
+        </svg>
+        <span class="mt">${c.days}営業日 ・ 最終 ${c.lastDate ? mdLabel(c.lastDate) : "—"}</span>
+      </button></div>`;
+  }).join("");
+
+  el("sparks").querySelectorAll("button[data-v]").forEach(b =>
+    b.addEventListener("click", () => { state.variety = b.dataset.v; refreshPicker(); render(); }));
+}
+
 /* ---------- render ---------- */
 function render(){
   const dates = visibleDates();
   const pl = PRICE[state.price].label;
 
-  el("noteA").textContent = `各日・各市場・各産地の「${pl}」を円/kgに換算し、その中央値を品種ごとに結んだもの。凡例をクリックで表示を切り替えられます。`;
+  el("noteA").textContent = `各日・各市場・各産地の「${pl}」を円/kgに換算し、その中央値を品種ごとに結んだもの。凡例をクリックで表示を切り替えられます（初期表示は掲載の多い${PLOT_MAX}種）。破線は色を共用している品種です。`;
   el("titleB").textContent = `${V_FULL[state.variety]||state.variety}の産地別`;
   el("titleC").textContent = `${V_FULL[state.variety]||state.variety}の市場別`;
 
+  renderSparks();
+
   const vs = varietySeries(dates);
-  legend(el("legendA"), V_ORDER, vColor, true);
+  legend(el("legendA"), V_ORDER, vColor, true, vDash);
   lineChart(el("chartA"), el("tipA"), {
-    labels:dates, series:vs, order:V_ORDER, colorOf:vColor, padRight:126,
-    hiddenSet:state.hidden, height:270, aria:`品種別の${pl}の推移`
+    labels:dates, series:vs, order:V_ORDER, colorOf:vColor, dashOf:vDash, padRight:150,
+    hiddenSet:state.hidden, height:290, aria:`品種別の${pl}の推移`
   });
 
   const {series:os, order:oo} = originSeries(dates, state.variety);
@@ -648,10 +745,30 @@ function render(){
 /* ---------- boot ---------- */
 el("asof").textContent = LAST;
 el("gen").textContent = `更新 ${D.generated}`;
+/* 品種が少ないうちはボタン、増えたらプルダウンに切り替える */
+function refreshPicker(){
+  const host = el("pickVariety");
+  if(V_ORDER.length <= 5){
+    host.className = "seg";
+    host.setAttribute("role","group");
+    host.setAttribute("aria-label","品種");
+    seg(host, V_ORDER.map(v=>[v, V_FULL[v]||v]), state.variety,
+        k => { state.variety=k; refreshPicker(); render(); });
+  } else {
+    host.className = "";
+    host.removeAttribute("role");
+    host.innerHTML = `<select class="picker" aria-label="掘り下げる品種">` +
+      V_ORDER.map(v => `<option value="${esc(v)}"${v===state.variety?" selected":""}>${esc(V_FULL[v]||v)}</option>`).join("") +
+      `</select>`;
+    host.querySelector("select").addEventListener("change", e => {
+      state.variety = e.target.value; render();
+    });
+  }
+}
 function refreshSegs(){
   seg(el("segRange"), RANGES, state.range, k => { state.range=k; refreshSegs(); render(); });
   seg(el("segPrice"), [["high","高値"],["mid","中値"],["low","安値"]], state.price, k => { state.price=k; refreshSegs(); render(); });
-  seg(el("segVariety"), V_ORDER.map(v=>[v, V_FULL[v]||v]), state.variety, k => { state.variety=k; refreshSegs(); render(); });
+  refreshPicker();
 }
 refreshSegs();
 renderTable();
