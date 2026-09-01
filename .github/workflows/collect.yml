@@ -49,7 +49,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add raw_history.csv budou_prices.csv site
+          git add raw_history.csv budou_prices.csv varieties.json site
           if git diff --staged --quiet; then
             echo "更新なし"
           else
