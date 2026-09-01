@@ -134,6 +134,19 @@ h2{font-family:"Zen Old Mincho",serif; font-size:19px; font-weight:600; margin:2
   font-size:9.5px; font-weight:700; letter-spacing:.08em; color:var(--surface);
   background:var(--c); border-radius:3px; padding:1px 4px; margin-left:1px; flex:none;
 }
+/* ---------- 相場メモ ---------- */
+.memo{list-style:none; margin:12px 0 0; padding:0; display:grid; gap:9px}
+.memo li{display:grid; grid-template-columns:auto 1fr; gap:0 11px; align-items:baseline; font-size:13.5px; line-height:1.7}
+.memo .tag{
+  font-size:10px; font-weight:700; letter-spacing:.09em; color:var(--ink2);
+  background:var(--sunk); border-radius:4px; padding:2px 7px; white-space:nowrap; justify-self:start;
+  border:1px solid var(--border);
+}
+.memo b{font-weight:700; font-variant-numeric:tabular-nums}
+.memo .up{color:var(--up)} .memo .down{color:var(--down)}
+.memo em{font-style:normal; font-weight:700}
+.memo .none{color:var(--muted); font-size:12.5px}
+
 select.picker{
   font:inherit; font-size:12.5px; padding:5px 26px 5px 10px; border-radius:7px;
   border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer;
@@ -229,6 +242,17 @@ footer a{color:var(--ink2)}
   </div>
 
   <section class="kpis" id="kpis" aria-label="最新営業日の品種別卸値"></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="eyebrow">相場メモ</div>
+        <h2 id="titleM">きょうの読み</h2>
+      </div>
+    </div>
+    <ul class="memo" id="memo"></ul>
+    <p class="note" id="noteM"></p>
+  </section>
 
   <section class="panel">
     <div class="panel-head">
@@ -686,6 +710,141 @@ function legend(host, keys, colorOf, toggleable, dashOf){
   }));
 }
 
+/* ---------- 相場メモ ----------
+   数字から機械的に書き起こす。断定的な因果は書かず、
+   「何がどれだけ動いたか」と「同時に何が起きているか」だけを並べる。 */
+function pct(now, was){ return (was == null || !was || now == null) ? null : (now - was) / was * 100; }
+function signed(p, digits){
+  const d = digits == null ? 1 : digits;
+  const cls = Math.abs(p) < 1 ? "" : (p > 0 ? "up" : "down");
+  const arrow = Math.abs(p) < 1 ? "±" : (p > 0 ? "+" : "−");
+  return `<b class="${cls}">${arrow}${Math.abs(p).toFixed(d)}%</b>`;
+}
+/* LAST から n 日前に最も近い営業日の位置。見つからなければ -1 */
+function idxNearDaysAgo(n, tol){
+  const t = new Date(LAST); t.setDate(t.getDate() - n);
+  const want = t.getTime();
+  let best = -1, bestGap = Infinity;
+  D.dates.forEach((d, i) => {
+    const gap = Math.abs(new Date(d).getTime() - want) / 86400000;
+    if (gap <= (tol == null ? 7 : tol) && gap < bestGap) { bestGap = gap; best = i; }
+  });
+  return best;
+}
+function renderMemo(){
+  const pl = PRICE[state.price].label;
+  const all = D.dates;
+  const vs = varietySeries(all);
+  const vol = volumeSeries(all);
+  const iLast = all.length - 1;
+  const iWeek = Math.max(0, iLast - 5);
+  const iYear = idxNearDaysAgo(365, 10);
+  const items = [];
+  const add = (tag, html) => items.push(`<li><span class="tag">${tag}</span><span>${html}</span></li>`);
+
+  /* 1. 入荷量 */
+  const vNow = vol[iLast], vWeek = vol[iWeek], vYear = iYear >= 0 ? vol[iYear] : null;
+  if (vNow != null) {
+    const parts = [`9市場のぶどう入荷は <b>${(vNow/1000).toFixed(1)}t</b>`];
+    const pw = pct(vNow, vWeek); if (pw != null) parts.push(`前週比 ${signed(pw, 0)}`);
+    const py = pct(vNow, vYear); if (py != null) parts.push(`前年同期比 ${signed(py, 0)}（${all[iYear]}）`);
+    add("入荷", parts.join("、") + "。");
+  }
+
+  /* 2. 値動きの大きい品種 */
+  const moves = V_ORDER.map(v => {
+    const now = vs[v][iLast];
+    if (now == null) return null;
+    return {v, now, wow: pct(now, vs[v][iWeek]), yoy: iYear >= 0 ? pct(now, vs[v][iYear]) : null};
+  }).filter(Boolean);
+
+  if (moves.length) {
+    const withW = moves.filter(m => m.wow != null).sort((a,b) => b.wow - a.wow);
+    if (withW.length) {
+      const hi = withW[0], lo = withW[withW.length-1];
+      if (withW.length > 1 && Math.abs(hi.wow) >= 1 || Math.abs(lo.wow) >= 1) {
+        const bits = [];
+        if (hi.wow >= 1) bits.push(`上げは <em>${esc(hi.v)}</em>（${yen(hi.now)}/kg、前週比 ${signed(hi.wow)}）`);
+        if (lo.wow <= -1 && lo.v !== hi.v) bits.push(`下げは <em>${esc(lo.v)}</em>（${yen(lo.now)}/kg、前週比 ${signed(lo.wow)}）`);
+        if (bits.length) add("値動き", `${pl}ベースで、${bits.join("、")}。`);
+      } else {
+        add("値動き", `${pl}ベースでは前週から大きな動きはありません（変動幅 1% 未満）。`);
+      }
+    }
+    const withY = moves.filter(m => m.yoy != null).sort((a,b) => Math.abs(b.yoy) - Math.abs(a.yoy));
+    if (withY.length) {
+      add("前年比", withY.slice(0,3).map(m =>
+        `<em>${esc(m.v)}</em> ${signed(m.yoy, 0)}`).join("、") + `（${all[iYear]} との比較）。`);
+    }
+  }
+
+  /* 3. 選択品種の産地差・市場差（最新営業日） */
+  const V = state.variety;
+  const vi = D.varieties.indexOf(V);
+  const di = D.dates.indexOf(LAST);
+  /* 掲載が1件しかない区分は値がぶれるので、開きを語るときは2件以上に限る */
+  const byKey = (keyIdx, names) => {
+    const b = {};
+    (byDate.get(di)||[]).forEach(r => {
+      if (r[C.v] !== vi) return;
+      const p = priceOf(r); if (p == null) return;
+      const k = names[r[keyIdx]];
+      (b[k] = b[k] || []).push(p);
+    });
+    return Object.keys(b).map(k => [k, median(b[k]), b[k].length]).sort((x,y) => y[1] - x[1]);
+  };
+  const ratio = (hi, lo) => (hi / lo).toFixed(1);
+  const thin = arr => arr.some(x => x[2] < 2) ? "（掲載件数が少なく振れやすい値です）" : "";
+
+  const orgAll = byKey(C.o, D.origins).filter(x => x[0] !== "各地");
+  const org = orgAll.filter(x => x[2] >= 2);
+  if (org.length >= 2) {
+    const hi = org[0], lo = org[org.length-1];
+    add("産地", `<em>${esc(V)}</em>は <b>${esc(hi[0])} ${yen(hi[1])}</b> がいちばん高く、<b>${esc(lo[0])} ${yen(lo[1])}</b> がいちばん安い。${esc(hi[0])}が ${signed(pct(hi[1], lo[1]), 0)} 上。`);
+  } else if (orgAll.length === 1) {
+    add("産地", `<em>${esc(V)}</em>はこの日 <b>${esc(orgAll[0][0])}</b> 産だけ（${yen(orgAll[0][1])}/kg）。`);
+  } else if (orgAll.length >= 2) {
+    add("産地", `<em>${esc(V)}</em>の産地は ${orgAll.map(x=>esc(x[0])).join("・")}。いずれも掲載1件のみで、比較できるほどの数がありません。`);
+  }
+
+  const mktAll = byKey(C.m, D.markets);
+  const mkt = mktAll.filter(x => x[2] >= 2);
+  if (mkt.length >= 2) {
+    const hi = mkt[0], lo = mkt[mkt.length-1];
+    const r = ratio(hi[1], lo[1]);
+    add("市場", `同じ<em>${esc(V)}</em>でも <b>${esc(hi[0])} ${yen(hi[1])}</b> と <b>${esc(lo[0])} ${yen(lo[1])}</b> で <b>${r}倍</b>の開き。${thin([hi, lo])}`);
+  } else if (mktAll.length >= 2) {
+    add("市場", `<em>${esc(V)}</em>は ${mktAll.length} 市場に出ていますが、各市場とも掲載1件のみで開きは読み取れません。`);
+  }
+
+  /* 4. 季節の位置 */
+  const cur = moves.find(m => m.v === V);
+  const firstSeen = V_FIRST[V];
+  const lastSeen = (() => { let x = null; D.rows.forEach(r => { if (r[C.v] === vi) { const d = D.dates[r[C.d]]; if (!x || d > x) x = d; } }); return x; })();
+  if (lastSeen && lastSeen !== LAST) {
+    add("時期", `<em>${esc(V)}</em>の最終取引は <b>${lastSeen}</b>。最新営業日には出ていません。`);
+  } else if (cur) {
+    const yearNow = LAST.slice(0,4);
+    const past = [];
+    D.rows.forEach(r => { if (r[C.v] === vi) { const d = D.dates[r[C.d]]; if (d.slice(0,4) < yearNow) past.push(d); } });
+    if (past.length) {
+      past.sort();
+      const end = past[past.length-1];
+      const left = Math.round((new Date(end.replace(/^\d{4}/, yearNow)) - new Date(LAST)) / 86400000);
+      const tail = left > 6 ? `この日付どおりなら、あと <b>${Math.round(left/7)}週間</b>ほど続く計算です。`
+                 : left >= 0 ? `例年ならそろそろ終盤です。`
+                 : `今年はすでにその時期を <b>${-left}日</b> 越えています。`;
+      add("時期", `<em>${esc(V)}</em>は前年 <b>${end}</b> が最後の掲載でした。${tail}`);
+    }
+  }
+
+  el("memo").innerHTML = items.length ? items.join("")
+    : `<li class="none">この条件では書けることがありません。期間や品種を変えてみてください。</li>`;
+  el("titleM").textContent = `${LAST} の読み`;
+  el("noteM").textContent =
+    `数字から自動で書き起こしたものです（${pl}ベース／円kg換算の中央値）。値と量の並記は同時に起きていることを示すだけで、因果を示すものではありません。`;
+}
+
 /* ---------- 全品種のスパークライン ---------- */
 function renderSparks(){
   const dates = visibleDates();
@@ -737,6 +896,7 @@ function render(){
   el("titleB").textContent = `${V_FULL[state.variety]||state.variety}の産地別`;
   el("titleC").textContent = `${V_FULL[state.variety]||state.variety}の市場別`;
 
+  renderMemo();
   renderSparks();
 
   const vs = varietySeries(dates);
