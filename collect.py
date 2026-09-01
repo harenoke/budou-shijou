@@ -8,14 +8,16 @@ GitHub Actions（インターネット制限なし）で毎日実行される想
   site/index.html        公開用ダッシュボード（GitHub Pages）
   site/data.json         グラフ用の圧縮データ
 """
-import csv, io, json, os, sys, urllib.request, urllib.error
+import csv, io, json, os, random, sys, time, urllib.request, urllib.error
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 BASE_URL   = "https://www.shijou-nippo.metro.tokyo.lg.jp"
 DAYS_BACK  = int(os.environ.get("DAYS_BACK", "12"))
-WORKERS    = int(os.environ.get("WORKERS", "12"))
+DAYS_SKIP  = int(os.environ.get("DAYS_SKIP", "0"))  # 何日前から始めるか（まとめ取りを分割する用）
+WORKERS    = int(os.environ.get("WORKERS", "4"))   # 出典サーバーは同時接続が多いと接続を切る
+RETRIES    = int(os.environ.get("RETRIES", "4"))
 MARKET_IDS = range(1, 10)          # K1..K9（K0 は全市場計＝価格なし）
 JST        = timezone(timedelta(hours=9))
 
@@ -50,20 +52,32 @@ VARIETY_FIX = {
 
 
 # --------------------------------------------------------------- 取得
+FAILURES = []          # 404 ではなく「取りに行けなかった」ページ
+
+
 def fetch(url):
+    """404 は休市・未掲載として確定。それ以外の失敗は待って数回やり直す。
+
+    ここで黙って None を返すと、通信エラーが「その日は休みだった」と
+    同じ扱いになりデータに穴が開く。だから区別して FAILURES に記録する。
+    """
     req = urllib.request.Request(url, headers={"User-Agent": "budou-shijou-collector/1.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            if r.status != 200:
-                return None
-            return r.read().decode("cp932", errors="replace")
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            print("  ! HTTP %s %s" % (e.code, url))
-        return None
-    except Exception as e:
-        print("  ! %s %s" % (type(e).__name__, url))
-        return None
+    last = None
+    for attempt in range(RETRIES):
+        try:
+            with urllib.request.urlopen(req, timeout=45) as r:
+                if r.status == 200:
+                    return r.read().decode("cp932", errors="replace")
+                last = "HTTP %s" % r.status
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None                     # 休市・未掲載（確定）
+            last = "HTTP %s" % e.code
+        except Exception as e:
+            last = type(e).__name__
+        time.sleep(1.0 * (attempt + 1) + random.random())
+    FAILURES.append((url, last))
+    return None
 
 
 def market_name(first_line):
@@ -100,10 +114,10 @@ def parse_market_csv(text, date):
 
 
 def collect():
-    """直近 DAYS_BACK 日 × 9市場を並列に取りに行く。"""
+    """DAYS_SKIP 日前から DAYS_BACK 日分 × 9市場を、控えめな並列度で取りに行く。"""
     today = datetime.now(JST).date()
     jobs = []
-    for back in range(1, DAYS_BACK + 1):
+    for back in range(DAYS_SKIP + 1, DAYS_SKIP + DAYS_BACK + 1):
         ymd = (today - timedelta(days=back)).strftime("%Y%m%d")
         for k in MARKET_IDS:
             jobs.append((ymd, k))
@@ -122,9 +136,18 @@ def collect():
                 ok += 1
                 rows += got
     rows.sort()
-    print("取得: %d ページ / 休市・未掲載 %d ページ / ぶどう %d 行" % (ok, miss, len(rows)))
+    print("取得: %d ページ / 休市・未掲載 %d ページ / 取得失敗 %d ページ / ぶどう %d 行"
+          % (ok, miss - len(FAILURES), len(FAILURES), len(rows)))
     if ok == 0:
         sys.exit("取得できたページが 0 件でした。サイト構成が変わった可能性があります。")
+    if FAILURES:
+        for url, why in FAILURES[:20]:
+            print("  ! %s %s" % (why, url))
+        if len(FAILURES) > 20:
+            print("  ! ほか %d 件" % (len(FAILURES) - 20))
+        if len(FAILURES) > len(jobs) * 0.05:
+            sys.exit("取得失敗が多すぎます（%d / %d）。WORKERS を下げて数分後にやり直してください。"
+                     % (len(FAILURES), len(jobs)))
     return rows
 
 
